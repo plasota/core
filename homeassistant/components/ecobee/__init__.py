@@ -6,7 +6,9 @@ import voluptuous as vol
 
 from homeassistant.config_entries import SOURCE_IMPORT
 from homeassistant.const import CONF_API_KEY
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.event import async_call_later
 from homeassistant.util import Throttle
 
 from .const import _LOGGER, CONF_REFRESH_TOKEN, DATA_ECOBEE_CONFIG, DOMAIN, PLATFORMS
@@ -48,7 +50,9 @@ async def async_setup_entry(hass, entry):
 
     data = EcobeeData(hass, entry, api_key=api_key, refresh_token=refresh_token)
 
-    if not await data.refresh():
+    try:
+        await data.refresh()
+    except ConfigEntryNotReady:
         return False
 
     await data.update()
@@ -89,8 +93,8 @@ class EcobeeData:
             _LOGGER.debug("Refreshing expired ecobee tokens")
             await self.refresh()
 
-    async def refresh(self) -> bool:
-        """Refresh ecobee tokens and update config entry."""
+    async def refresh(self) -> None:
+        """Refresh ecobee tokens, update config entry, and schedule next refresh."""
         _LOGGER.debug("Refreshing ecobee tokens and updating config entry")
         if await self._hass.async_add_executor_job(self.ecobee.refresh_tokens):
             self._hass.config_entries.async_update_entry(
@@ -100,9 +104,10 @@ class EcobeeData:
                     CONF_REFRESH_TOKEN: self.ecobee.config[ECOBEE_REFRESH_TOKEN],
                 },
             )
-            return True
-        _LOGGER.error("Error refreshing ecobee tokens")
-        return False
+            async_call_later(self._hass, self.ecobee.expires_in - 60, self.refresh)
+        else:
+            _LOGGER.error("Error refreshing ecobee tokens")
+            raise ConfigEntryNotReady("Error refreshing ecobee tokens")
 
 
 async def async_unload_entry(hass, entry):
