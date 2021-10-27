@@ -93,7 +93,7 @@ class EcobeeData:
             _LOGGER.debug("Refreshing expired ecobee tokens")
             await self.refresh()
 
-    async def refresh(self) -> None:
+    async def refresh(self, _now=None) -> None:
         """Refresh ecobee tokens, update config entry, and schedule next refresh."""
         _LOGGER.debug("Refreshing ecobee tokens and updating config entry")
         if await self._hass.async_add_executor_job(self.ecobee.refresh_tokens):
